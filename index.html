@@ -437,28 +437,25 @@
     let busy = false; // 節流，避免連按造成重疊
 
     // 將 trigger 掛到 window，讓鋼琴模組能包裝它以出聲（也能被觸控使用）
-    window.trigger = async function(dir){
-      // On first trigger: remove the controls UI (both the Controls pill row and the hint pill)
-      // This ensures both "Controls" and the "Each press → ..." hint disappear after first swipe/click.
-      if (hintPill && hintPill.parentNode) {
-        hintPill.parentNode.removeChild(hintPill);
-      }
-      if (controlsRow && controlsRow.parentNode) {
-        controlsRow.parentNode.removeChild(controlsRow);
-      }
-
-      if (busy) return; busy = true;
-      await showFromDirection(dir);
-      busy = false;
-    };
+    let __hasInteracted = false;
+window.trigger = async function(dir, fromUser=false){
+  if (fromUser && !__hasInteracted) {
+    __hasInteracted = true;
+    if (hintPill && hintPill.parentNode) { hintPill.parentNode.removeChild(hintPill); }
+    if (controlsRow && controlsRow.parentNode) { controlsRow.parentNode.removeChild(controlsRow); }
+  }
+  if (busy) return; busy = true;
+  await showFromDirection(dir);
+  busy = false;
+};
 
     window.addEventListener('keydown', (e) => {
-      const dir = keyMap[e.key];
-      if (dir){
-        e.preventDefault();
-        window.trigger(dir);
-      }
-    });
+  const dir = keyMap[e.key];
+  if (dir){
+    e.preventDefault();
+    window.trigger(dir, true);
+  }
+});
 
     // 阻止鋼琴模組重複綁定（我們統一透過包裝的 window.trigger 出聲）
     window.__pianoKeyListenerAttached = true;
@@ -467,10 +464,10 @@
       if (el) el.__pianoHooked = true;
     });
 
-    document.getElementById('btnUp').onclick = () => window.trigger('up');
-    document.getElementById('btnDown').onclick = () => window.trigger('down');
-    document.getElementById('btnLeft').onclick = () => window.trigger('left');
-    document.getElementById('btnRight').onclick = () => window.trigger('right');
+    document.getElementById('btnUp').onclick = () => window.trigger('up', true);
+    document.getElementById('btnDown').onclick = () => window.trigger('down', true);
+    document.getElementById('btnLeft').onclick = () => window.trigger('left', true);
+    document.getElementById('btnRight').onclick = () => window.trigger('right', true);
 
     // 觸控滑動（直覺映射：上滑→down、右滑→left），並由 window.trigger 統一出聲
     (function(){
@@ -481,12 +478,12 @@
         const raw = Math.abs(dx) > Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up');
         const map = { up:'down', down:'up', left:'right', right:'left' };
         const dir = map[raw] || raw;
-        window.trigger(dir);
+        window.trigger(dir, true);
       }, { passive:true });
     })();
 
     // 起始先載一張（任選來源）
-    window.trigger('up');
+window.trigger('up', false);
   </script>
 
   <!-- Offline piano samples (HTMLAudio, no external CDN) -->
@@ -539,7 +536,17 @@
       // 與 trigger 串接（所有來源：鍵盤、D-pad、滑動都走這裡，因此都會有音效）
       if (typeof window.trigger === 'function' && !window.__pianoTriggerWrapped){
         const prev = window.trigger;
-        window.trigger = async function(dir){ playPiano(dir); return prev(dir); };
+        let __hasInteracted = false;
+window.trigger = async function(dir, fromUser=false){
+  if (fromUser && !__hasInteracted) {
+    __hasInteracted = true;
+    if (hintPill && hintPill.parentNode) { hintPill.parentNode.removeChild(hintPill); }
+    if (controlsRow && controlsRow.parentNode) { controlsRow.parentNode.removeChild(controlsRow); }
+  }
+  if (busy) return; busy = true;
+  await showFromDirection(dir);
+  busy = false;
+};
         window.__pianoTriggerWrapped = true;
       }
 
