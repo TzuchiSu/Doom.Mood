@@ -205,7 +205,7 @@
   <div id="hud">
     <div class="row controls-row">
       <span class="pill controls">Controls: <span class="kbd">↑</span> The Met, <span class="kbd">↓</span> Internet Archive (random), <span class="kbd">←</span> Internet Archive (news), <span class="kbd">→</span> Wikimedia Commons</span>
-      <span class="pill controls">Each press → fetches a new full-screen image</span>
+      <span class="pill controls" id="hintPill">Each press → fetches a new full-screen image</span>
     </div>
     <!-- creditRow 用於動態插入來源資訊，我會讓 setCredit 插入的 pill 帶上 .credit 類別，避免干擾 controls 的樣式 -->
     <div class="row" id="creditRow" style="display:none"></div>
@@ -231,6 +231,7 @@
     const stage = document.getElementById('stage');
     const creditRow = document.getElementById('creditRow');
     const spinner = document.getElementById('spinner');
+    const hintPill = document.getElementById('hintPill'); // hint pill element
 
     function setSpinner(on){ spinner.classList.toggle('show', !!on); }
 
@@ -435,6 +436,11 @@
 
     // 將 trigger 掛到 window，讓鋼琴模組能包裝它以出聲（也能被觸控使用）
     window.trigger = async function(dir){
+      // hide the hint pill on first attempt (so it only appears prior to first swipe/trigger)
+      if (hintPill && hintPill.parentNode) {
+        hintPill.parentNode.removeChild(hintPill);
+      }
+
       if (busy) return; busy = true;
       await showFromDirection(dir);
       busy = false;
