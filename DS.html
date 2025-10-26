@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Doom.Mood</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --fg: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      overflow: hidden; /* 因為是滿版視圖 */
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    /* 滿版容器 */
+    #stage {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      overflow: hidden;
+      isolation: isolate;
+      display: grid; /* center when empty */
+      place-items: center;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      will-change: transform, opacity;
+    }
+
+    .slide img {
+      height: 100vh;  /* 每張圖高度與視窗一致 */
+      width: auto;
+      object-fit: cover;      /* 優先以高度滿版，水平可能溢出（更有連續感） */
+      object-position: center center;
+      user-select: none;
+      -webkit-user-drag: none;
+      pointer-events: none;
+      filter: saturate(0.95) contrast(1.02);
+    }
+
+    /* 浮動資訊列 */
+    #hud {
+      position: fixed;
+      left: 1rem;
+      bottom: 1rem;
+      right: 1rem;
+      display: grid;
+      gap: .4rem;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+
+    .pill {
+      pointer-events: auto;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      color: var(--fg);
+      border-radius: 999px;
+      padding: .45rem .7rem;
+      font-size: .9rem;
+      backdrop-filter: blur(6px);
+      white-space: nowrap;
+    }
+
+    .kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: rgba(30, 41, 59, 0.85);
+      color: var(--fg);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      padding: .1rem .45rem;
+      border-radius: .4rem;
+      box-shadow: inset 0 -1px 0 rgba(255,255,255,0.05);
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* 螢幕上的方向按鈕（可觸控） */
+    #dpad {
+      position: fixed;
+      top: 1rem; right: 1rem;
+      display: grid; grid-template-columns: 48px 48px 48px; grid-template-rows: 48px 48px 48px;
+      gap: 6px; z-index: 12; pointer-events: auto;
+      opacity: .85;
+    }
+    #dpad button{
+      background: rgba(15,23,42,.55);
+      border: 1px solid rgba(148,163,184,.35);
+      color: var(--fg);
+      border-radius: .6rem;
+      font-size: 14px; backdrop-filter: blur(6px);
+      cursor: pointer;
+    }
+    #dpad button:active{ transform: scale(.98); }
+    #dpad .empty{ visibility: hidden; }
+
+    /* 載入中指示 */
+    #spinner{
+      position: fixed; inset: 0; display: grid; place-items: center; z-index: 11; pointer-events: none;
+      transition: opacity .25s ease; opacity: 0;
+    }
+    #spinner.show{ opacity: 1; }
+    .dot{
+      width: 10px; height: 10px; margin: 0 5px; border-radius: 50%; background: var(--fg);
+      animation: bounce 1s infinite ease-in-out alternate;
+    }
+    .dot:nth-child(2){ animation-delay: .15s; }
+    .dot:nth-child(3){ animation-delay: .3s; }
+    @keyframes bounce { from{ transform: translateY(0) } to{ transform: translateY(-8px) } }
+    /* Top-left logo */
+    #logo{ position: fixed; top: 12px; left: 12px; height: 200px; width: auto; z-index: 20; opacity: .95; }
+    /* Startup background cover */
+    #bg{ position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; }
+    #bg img{ height: 100vh; width: auto; object-fit: cover; object-position: center; }
+  </style>
+</head>
+<body>
+  <div id="stage" aria-live="polite">
+    <div id="bg"><img src="assets/BG.png" alt="Background cover"></div>
+  </div>
+  <img id="logo" src="assets/logo.png" alt="Logo"/>
+
+  <div id="hud">
+    <div class="row">
+      <span class=\"pill\">Controls: <span class=\"kbd\">↑</span> The Met, <span class=\"kbd\">↓</span> Internet Archive (random), <span class=\"kbd\">←</span> Internet Archive (news), <span class=\"kbd\">→</span> Wikimedia Commons</span>
+      <span class="pill">Each press → fetches a new full-screen image</span>
+    </div>
+    <div class="row" id="creditRow" style="display:none"></div>
+  </div>
+
+  <div id="dpad" aria-label="On-screen arrow pad">
+    <button class="empty" disabled></button>
+    <button id="btnUp">↑</button>
+    <button class="empty" disabled></button>
+    <button id="btnLeft">←</button>
+    <button class="empty" disabled></button>
+    <button id="btnRight">→</button>
+    <button class="empty" disabled></button>
+    <button id="btnDown">↓</button>
+    <button class="empty" disabled></button>
+  </div>
+
+  <div id="spinner"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+
+  <script>
+    // ========= Config =========
+    // 已移除 Unsplash，改做「新聞影像」來源（GDELT）不需 key
+    const stage = document.getElementById('stage');
+    const creditRow = document.getElementById('creditRow');
+    const spinner = document.getElementById('spinner');
+
+    function setSpinner(on){ spinner.classList.toggle('show', !!on); }
+
+    function setCredit({ title, author, sourceName, sourceUrl }){
+      const html = [];
+      if (title) html.push(`<span class="pill">${title}</span>`);
+      if (author) html.push(`<span class="pill">by ${author}</span>`);
+      if (sourceName || sourceUrl) {
+        const text = sourceName || sourceUrl;
+        const link = sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noopener">${text}</a>` : text;
+        html.push(`<span class="pill">${link}</span>`);
+      }
+      creditRow.innerHTML = html.join("\n");
+      creditRow.style.display = html.length ? 'flex' : 'none';
+    }
+
+    // ========= Fetchers（極簡版：直接回傳單一 URL） =========
+    // ↑ The Met（無需 key）
+    async function fetchMetRandom(){
+      if (!fetchMetRandom._ids || fetchMetRandom._ids.length === 0){
+        const res = await fetch('https://collectionapi.metmuseum.org/public/collection/v1/search?hasImages=true&q=*');
+        const data = await res.json();
+        fetchMetRandom._ids = data.objectIDs || [];
+      }
+      if (!fetchMetRandom._ids.length) throw new Error('MET: no objectIDs');
+      for (let i=0;i<8;i++){
+        const id = fetchMetRandom._ids[Math.floor(Math.random()*fetchMetRandom._ids.length)];
+        const r = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`);
+        const obj = await r.json();
+        const full = obj.primaryImage || obj.additionalImages?.[0] || obj.primaryImageSmall;
+        const thumb = obj.primaryImageSmall || full;
+        if (full){
+          return { thumbUrl: thumb, fullUrl: full, title: obj.title||'The Met', author: obj.artistDisplayName||'', sourceName: 'The Met', sourceUrl: obj.objectURL||'https://www.metmuseum.org/art/collection' };
+        }
+      }
+      throw new Error('MET: failed');
+    }
+
+    // ↓ Internet Archive（無需 key）。策略：Advanced Search 抓一批 identifier → /metadata → 選一張 JPG/PNG。
+    async function fetchIARandom(){
+      const page = 1 + Math.floor(Math.random()*50);
+      const searchUrl = `https://archive.org/advancedsearch.php?q=mediatype%3A(image)&fl%5B%5D=identifier&rows=50&page=${page}&output=json`;
+      const res = await fetch(searchUrl);
+      const data = await res.json();
+      const docs = data?.response?.docs || [];
+      if (!docs.length) throw new Error('IA: no docs');
+      for (let t=0;t<12;t++){
+        const id = docs[Math.floor(Math.random()*docs.length)].identifier;
+        const meta = await (await fetch(`https://archive.org/metadata/${id}`)).json();
+        const files = meta?.files || [];
+        const big = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && !/thumb|small|icon/i.test(f.name));
+        const small = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && /thumb|small|icon|medium/i.test(f.name));
+        const fullF = big[0] || small[0];
+        const thumbF = small[0] || big[0];
+        if (fullF){
+          return { thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`, fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`, title: meta?.metadata?.title||id, author: meta?.metadata?.creator||'', sourceName:'Internet Archive', sourceUrl:`https://archive.org/details/${id}` };
+        }
+      }
+      throw new Error('IA: no image file');
+    }
+
+    // ← Internet Archive：偏新聞影像（無需 key）。以關鍵字 news/newspaper/press 搜尋圖片型態的項目。
+    async function fetchIANewsRandom(){
+      const queries=[
+        'mediatype:(image) AND (news OR newspaper OR press OR headline)',
+        'mediatype:(image) AND (frontpage OR journal OR periodical)',
+        'mediatype:(image) AND (magazine AND news)'
+      ];
+      const q = encodeURIComponent(queries[Math.floor(Math.random()*queries.length)]);
+      const page = 1 + Math.floor(Math.random()*50);
+      const searchUrl = `https://archive.org/advancedsearch.php?q=${q}&fl%5B%5D=identifier&rows=50&page=${page}&output=json`;
+      const data = await (await fetch(searchUrl)).json();
+      const docs = data?.response?.docs || [];
+      if (!docs.length) throw new Error('IA News: no docs');
+      for (let t=0;t<14;t++){
+        const id = docs[Math.floor(Math.random()*docs.length)].identifier;
+        const meta = await (await fetch(`https://archive.org/metadata/${id}`)).json();
+        const files = meta?.files || [];
+        const big = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && !/thumb|small|icon/i.test(f.name));
+        const small = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && /thumb|small|icon|medium/i.test(f.name));
+        const fullF = big[0] || small[0];
+        const thumbF = small[0] || big[0];
+        if (fullF){
+          return { thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`, fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`, title: meta?.metadata?.title||id, author: meta?.metadata?.creator||'', sourceName:'Internet Archive – News', sourceUrl:`https://archive.org/details/${id}` };
+        }
+      }
+      throw new Error('IA News: no image');
+    }
+
+    // → Wikimedia Commons（無需 key）。用 generator=random + prop=imageinfo 取縮圖（較快），保留來源連結。
+    async function fetchCommonsRandom(){
+      const u = 'https://commons.wikimedia.org/w/api.php?action=query&generator=random&grnnamespace=6&prop=imageinfo|info&iiprop=url|extmetadata&iiurlheight=900&format=json&inprop=url&origin=*';
+      const j = await (await fetch(u)).json();
+      const pages = j?.query?.pages ? Object.values(j.query.pages) : [];
+      if (!pages.length) throw new Error('Commons: no pages');
+      for (const p of pages){
+        const ii = p.imageinfo && p.imageinfo[0];
+        const thumb = ii?.thumburl || ii?.url;
+        const full = ii?.url || thumb;
+        if (thumb){
+          const em = ii.extmetadata || {};
+          return { thumbUrl: thumb, fullUrl: full, title:(em.ObjectName && em.ObjectName.value)||p.title||'Wikimedia Commons', author:(em.Artist && em.Artist.value && em.Artist.value.replace(/<[^>]+>/g,''))||'', sourceName:'Wikimedia Commons', sourceUrl: ii.descriptionurl || p.canonicalurl || 'https://commons.wikimedia.org' };
+        }
+      }
+      throw new Error('Commons: failed');
+    }
+
+    // ========= View: slide-in 轉場（縮圖 → 大圖） =========
+    async function showFromDirection(direction){
+      setSpinner(true);
+      let payload;
+      try {
+        if (direction === 'up') payload = await fetchMetRandom();
+        else if (direction === 'down') payload = await fetchIARandom();
+        else if (direction === 'left') payload = await fetchIANewsRandom();
+        else if (direction === 'right') payload = await fetchCommonsRandom();
+      } catch(err){
+        console.error(err);
+        payload = { thumbUrl:`https://picsum.photos/seed/${Date.now()%100000}/900/1200`, fullUrl:`https://picsum.photos/seed/${Date.now()%100000}/1800/2400`, title: err.message||'Error', author:'', sourceName:'Fallback', sourceUrl:'' };
+      }
+
+      const slide = document.createElement('div');
+      slide.className = 'slide';
+
+      // 先放縮圖
+      const img = new Image();
+      img.decoding = 'async';
+      img.loading = 'eager';
+      img.referrerPolicy = 'no-referrer'; // 避免 IA 401
+      const chosen = payload.thumbUrl || payload.fullUrl || payload.url;
+      img.src = chosen;
+      // IA 401/403 備援：改用 /serve/ 端點；最後退回 Picsum
+      img.onerror = () => {
+        if ((payload.sourceName||'').startsWith('Internet Archive') && chosen) {
+          try {
+            const m = chosen.match(/download\/([^/]+)\/(.+)$/);
+            if (m) {
+              img.onerror = null;
+              img.src = `https://archive.org/serve/${m[1]}/${m[2]}`;
+              return;
+            }
+          } catch(_){}
+        }
+        img.src = `https://picsum.photos/seed/${Date.now()%100000}/1600/900`;
+      };
+      slide.appendChild(img);
+
+      const w = stage.clientWidth, h = stage.clientHeight;
+      let startX = 0, startY = 0;
+      if (direction === 'left') startX = -w;
+      if (direction === 'right') startX = w;
+      if (direction === 'up') startY = -h;
+      if (direction === 'down') startY = h;
+      slide.style.transform = `translate(${startX}px, ${startY}px)`;
+      slide.style.opacity = '0.8';
+
+      const prev = stage.querySelector('.slide:last-of-type');
+      stage.appendChild(slide);
+
+      try{ await img.decode(); }catch(_){ }
+
+      const ANIM_MS = 420;
+      slide.animate([
+        { transform: `translate(${startX}px, ${startY}px)`, opacity: .8 },
+        { transform: 'translate(0, 0)', opacity: 1 }
+      ], { duration: ANIM_MS, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'forwards' });
+
+      if (prev){
+        prev.animate([
+          { transform: 'translate(0,0)', opacity: 1 },
+          { transform: `translate(${-startX*0.25}px, ${-startY*0.25}px)`, opacity: 0 }
+        ], { duration: ANIM_MS, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'forwards' })
+        .addEventListener('finish', () => prev.remove());
+      }
+
+      // 預載大圖並替換
+      if (payload.fullUrl && payload.fullUrl !== payload.thumbUrl){
+        const hi = new Image();
+        hi.decoding = 'async';
+        hi.src = payload.fullUrl;
+        try { await hi.decode(); } catch(_) {}
+        img.src = payload.fullUrl;
+      }
+      img.animate([
+        { filter: 'blur(6px)' },
+        { filter: 'blur(0px)' }
+      ], { duration: 220, easing: 'ease-out', fill: 'forwards' });
+
+      setCredit(payload);
+      if (!window.__bgHidden){ const bg = document.getElementById('bg'); if (bg) bg.style.display='none'; window.__bgHidden=true; }
+      setSpinner(false);
+    }
+
+    // ========= Controls =========
+    const keyMap = {
+      ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+      w: 'up', s: 'down', a: 'left', d: 'right'
+    };
+
+    let busy = false; // 節流，避免連按造成重疊
+    let trigger = async function(dir){
+      if (busy) return; busy = true;
+      await showFromDirection(dir);
+      busy = false;
+    };
+
+    window.addEventListener('keydown', (e) => {
+      const dir = keyMap[e.key];
+      if (dir){
+        e.preventDefault();
+        trigger(dir);
+      }
+    });
+
+    document.getElementById('btnUp').onclick = () => trigger('up');
+    document.getElementById('btnDown').onclick = () => trigger('down');
+    document.getElementById('btnLeft').onclick = () => trigger('left');
+    document.getElementById('btnRight').onclick = () => trigger('right');
+
+    // 觸控滑動（簡化版）
+    let touchStart = null;
+    (function(){
+      if (window.__swipeInstalled) return; window.__swipeInstalled = true;
+      let sx=0, sy=0; const THRESH=48;
+      window.addEventListener('touchstart', (e)=>{ const t=e.touches[0]; if(!t) return; sx=t.clientX; sy=t.clientY; }, { passive:true });
+      window.addEventListener('touchend', (e)=>{ const t=e.changedTouches[0]; if(!t) return; const dx=t.clientX-sx, dy=t.clientY-sy; if (Math.abs(dx)<THRESH && Math.abs(dy)<THRESH) return; const dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up'); try{ trigger(dir); }catch(err){ console.error('swipe trigger failed', err);} }, { passive:true });
+    })();
+      const dy = (e.changedTouches[0].clientY - touchStart.clientY);
+      const ax = Math.abs(dx), ay = Math.abs(dy);
+      if (Math.max(ax, ay) < 30) return; // ignore short
+      if (ax > ay) trigger(dx < 0 ? 'left' : 'right');
+      else trigger(dy < 0 ? 'up' : 'down');
+      touchStart = null;
+    });
+
+    // 起始先載一張（任選來源）
+    showFromDirection('up');
+  </script>
+  <script>
+    </script>
+  <!-- Offline piano samples (HTMLAudio, no external CDN) -->
+  <script>
+    (function(){
+      if (window.__pianoInstalled) return; // 避免重複安裝
+      window.__pianoInstalled = true;
+
+      const PIANO_LOCAL = {
+        up:   'assets/piano/C5.mp3',  // 8 (高音 Do)
+        down: 'assets/piano/E5.mp3',  // 3 (高音 Mi)
+        left: 'assets/piano/B4.mp3',  // 7 (高音 Ti)
+        right:'assets/piano/D5.mp3'   // 2 (高音 Re)
+      };
+
+      const sounds = {};
+      for (const k in PIANO_LOCAL){
+        const a = new Audio();
+        a.src = PIANO_LOCAL[k];
+        a.preload = 'auto';
+        a.crossOrigin = 'anonymous';
+        a.volume = 0.9;
+        sounds[k] = a;
+      }
+
+      // 解鎖：第一次手勢播放極短靜音
+      let audioUnlocked = false;
+      async function unlockAudio(){
+        if (audioUnlocked) return;
+        try {
+          const s = new Audio('data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA');
+          await s.play();
+          audioUnlocked = true;
+        } catch(e) { console.warn('unlock failed', e); }
+      }
+      window.addEventListener('pointerdown', unlockAudio, { once:true });
+      window.addEventListener('keydown', unlockAudio, { once:true });
+
+      function playPiano(dir){
+        const a = sounds[dir];
+        if (!a) return;
+        try { a.currentTime = 0; a.play(); } catch(e){ console.error('audio play failed', e); }
+      }
+
+      // 使用不同名稱避免與主程式 keyMap 衝突
+      const pianoKeyMap = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right' };
+      if (!window.__pianoKeyListenerAttached){
+        window.addEventListener('keydown', (e)=>{ const d = pianoKeyMap[e.key]; if (d) playPiano(d); }, { passive:true });
+        window.__pianoKeyListenerAttached = true;
+      }
+      // D-pad 鈕
+      [['Up','up'],['Down','down'],['Left','left'],['Right','right']].forEach(([k,d])=>{
+        const el = document.getElementById('btn'+k);
+        if (el && !el.__pianoHooked){ el.addEventListener('click', ()=> playPiano(d)); el.__pianoHooked = true; }
+      });
+      // 與 trigger 串接（若存在）
+      if (typeof window.trigger === 'function' && !window.__pianoTriggerWrapped){
+        const prev = window.trigger;
+        window.trigger = async function(dir){ playPiano(dir); return prev(dir); };
+        window.__pianoTriggerWrapped = true;
+      }
+    })();
+  </script>
+</body>
+</html>
