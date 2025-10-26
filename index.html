@@ -80,10 +80,7 @@
     }
 
     /* 針對 credits（動態加入的）用不同 class，避免干擾 controls 的樣式 */
-    .pill.credit {
-      /* 如果想要 credits 跟 controls 不一樣，可在此微調 */
-      font-size: .82rem;
-    }
+    .pill.credit { font-size: .82rem; }
 
     .kbd {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -130,8 +127,10 @@
     .dot:nth-child(2){ animation-delay: .15s; }
     .dot:nth-child(3){ animation-delay: .3s; }
     @keyframes bounce { from{ transform: translateY(0) } to{ transform: translateY(-8px) } }
+
     /* Top-left logo */
     #logo{ position: fixed; top: 12px; left: 12px; height: 100px; width: auto; z-index: 20; opacity: .95; }
+
     /* Startup background cover（desktop: cover） */
     #bg{ position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; overflow: hidden; }
     #bg img{
@@ -145,8 +144,7 @@
 
     /* 小螢幕調整：手機維持 contain 行為，且特別鎖定 controls 的字級（避免動態變大） */
     @media (max-width: 600px) {
-      /* 手機：圖片改為 contain，確保不會被強制裁切 */
-      .slide img {
+      .slide img, #bg img{
         max-height: 100vh;
         max-width: 100vw;
         height: auto;
@@ -156,27 +154,13 @@
         display: block;
         margin: 0 auto;
       }
-      #bg img{
-        max-height: 100vh;
-        max-width: 100vw;
-        height: auto;
-        width: auto;
-        object-fit: contain;
-        object-position: center center;
-        display: block;
-        margin: 0 auto;
-      }
-
-      /* 調整一般 pill 與 kbd（整體縮小） */
       .pill { font-size: .75rem; padding: .35rem .5rem; }
       .kbd  { font-size: .78rem; padding: .08rem .35rem; }
 
-      /* 鎖定 controls row（避免滑動或動態加入其他 .pill 影響 controls 大小） */
-      /* 我把第一行加上 .controls-row（見 HTML），並指定 controls 類別 */
       #hud .controls-row .controls {
         font-size: .62rem;
         padding: .3rem .5rem;
-        white-space: normal;   /* 允許換行，會自動分成兩行（兩個 pill 會斷行） */
+        white-space: normal;
         line-height: 1.25;
       }
 
@@ -186,7 +170,6 @@
       #dpad button { font-size: 12px; border-radius: .45rem; }
     }
 
-    /* 更小的手機（例如舊型手機） */
     @media (max-width: 380px) {
       #hud .controls-row .controls { font-size: .58rem; padding: .26rem .42rem; }
       .pill { font-size: .68rem; padding: .25rem .4rem; }
@@ -201,13 +184,18 @@
   </div>
   <img id="logo" src="assets/Logo.png" alt="Logo"/>
 
-  <!-- 注意：我把第一個 row 加上 .controls-row，並把兩個 pill 都加上 controls 類別，這樣在小螢幕會穩定呈現為兩行（可換行），且其字級不會被後續動態 c[...]
   <div id="hud">
     <div class="row controls-row">
-      <span class="pill controls" id="controlsPill">Controls: <span class="kbd">↑</span> The Met, <span class="kbd">↓</span> Internet Archive (random), <span class="kbd">←</span> Internet Archiv[...]
+      <span class="pill controls" id="controlsPill">
+        Controls:
+        <span class="kbd">↑</span> The Met,
+        <span class="kbd">↓</span> Internet Archive (random),
+        <span class="kbd">←</span> Internet Archive (news-ish),
+        <span class="kbd">→</span> Wikimedia Commons
+      </span>
       <span class="pill controls" id="hintPill">Each press → fetches a new full-screen image</span>
     </div>
-    <!-- creditRow 用於動態插入來源資訊，我會讓 setCredit 插入的 pill 帶上 .credit 類別，避免干擾 controls 的樣式 -->
+    <!-- creditRow 供動態插入來源資訊 -->
     <div class="row" id="creditRow" style="display:none"></div>
   </div>
 
@@ -226,18 +214,16 @@
   <div id="spinner"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
 
   <script>
-    // ========= Config =========
-    // 已移除 Unsplash，改做「新聞影像」來源（GDELT）不需 key
+    // ========= Config / Elements =========
     const stage = document.getElementById('stage');
     const creditRow = document.getElementById('creditRow');
     const spinner = document.getElementById('spinner');
-    const hintPill = document.getElementById('hintPill'); // hint pill element
-    const controlsRow = document.querySelector('.controls-row'); // controls row wrapper
-    const controlsPill = document.getElementById('controlsPill');
+    const hintPill = document.getElementById('hintPill');
+    const controlsRow = document.querySelector('.controls-row');
 
     function setSpinner(on){ spinner.classList.toggle('show', !!on); }
 
-    // 注意：在這裡動態插入的 pill 都標記為 class="pill credit"，以免改變 controls 的樣式
+    // 動態插入來源資訊（每個 pill 帶 .credit，不影響 controls 樣式）
     function setCredit({ title, author, sourceName, sourceUrl }){
       const html = [];
       if (title) html.push(`<span class="pill credit">${title}</span>`);
@@ -251,8 +237,7 @@
       creditRow.style.display = html.length ? 'flex' : 'none';
     }
 
-    // ========= Fetchers（極簡版：直接回傳單一 URL） =========
-    // ↑ The Met（無需 key）
+    // ========= Fetchers（單一 URL 輸出） =========
     async function fetchMetRandom(){
       if (!fetchMetRandom._ids || fetchMetRandom._ids.length === 0){
         const res = await fetch('https://collectionapi.metmuseum.org/public/collection/v1/search?hasImages=true&q=*');
@@ -267,13 +252,19 @@
         const full = obj.primaryImage || obj.additionalImages?.[0] || obj.primaryImageSmall;
         const thumb = obj.primaryImageSmall || full;
         if (full){
-          return { thumbUrl: thumb, fullUrl: full, title: obj.title||'The Met', author: obj.artistDisplayName||'', sourceName: 'The Met', sourceUrl: obj.objectURL||'https://www.metmuseum.org/art/colle[...]
+          return {
+            thumbUrl: thumb,
+            fullUrl: full,
+            title: obj.title||'The Met',
+            author: obj.artistDisplayName||'',
+            sourceName: 'The Met',
+            sourceUrl: obj.objectURL||'https://www.metmuseum.org/art/collection'
+          };
         }
       }
       throw new Error('MET: failed');
     }
 
-    // ↓ Internet Archive（無需 key）。策略：Advanced Search 抓一批 identifier → /metadata → 選一張 JPG/PNG。
     async function fetchIARandom(){
       const page = 1 + Math.floor(Math.random()*50);
       const searchUrl = `https://archive.org/advancedsearch.php?q=mediatype%3A(image)&fl%5B%5D=identifier&rows=50&page=${page}&output=json`;
@@ -290,13 +281,19 @@
         const fullF = big[0] || small[0];
         const thumbF = small[0] || big[0];
         if (fullF){
-          return { thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`, fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`, title: meta?.metada[...]
+          return {
+            thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`,
+            fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`,
+            title: meta?.metadata?.title || 'Internet Archive',
+            author: meta?.metadata?.creator || '',
+            sourceName: 'Internet Archive',
+            sourceUrl: `https://archive.org/details/${id}`
+          };
         }
       }
       throw new Error('IA: no image file');
     }
 
-    // ← Internet Archive：偏新聞影像（無需 key）。以關鍵字 news/newspaper/press 搜尋圖片型態的項目。
     async function fetchIANewsRandom(){
       const queries=[
         'mediatype:(image) AND (news OR newspaper OR press OR headline)',
@@ -318,13 +315,19 @@
         const fullF = big[0] || small[0];
         const thumbF = small[0] || big[0];
         if (fullF){
-          return { thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`, fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`, title: meta?.metada[...]
+          return {
+            thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`,
+            fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`,
+            title: meta?.metadata?.title || 'Internet Archive (news)',
+            author: meta?.metadata?.creator || '',
+            sourceName: 'Internet Archive',
+            sourceUrl: `https://archive.org/details/${id}`
+          };
         }
       }
       throw new Error('IA News: no image');
     }
 
-    // → Wikimedia Commons（無需 key）。用 generator=random + prop=imageinfo 取縮圖（較快），保留來源連結。
     async function fetchCommonsRandom(){
       const u = 'https://commons.wikimedia.org/w/api.php?action=query&generator=random&grnnamespace=6&prop=imageinfo|info&iiprop=url|extmetadata&iiurlheight=900&format=json&inprop=url&origin=*';
       const j = await (await fetch(u)).json();
@@ -336,7 +339,14 @@
         const full = ii?.url || thumb;
         if (thumb){
           const em = ii.extmetadata || {};
-          return { thumbUrl: thumb, fullUrl: full, title:(em.ObjectName && em.ObjectName.value)||p.title||'Wikimedia Commons', author:(em.Artist && em.Artist.value && em.Artist.value.replace(/<[^>]+>/[...]
+          return {
+            thumbUrl: thumb,
+            fullUrl: full,
+            title:(em.ObjectName && em.ObjectName.value)||p.title||'Wikimedia Commons',
+            author:(em.Artist && em.Artist.value && em.Artist.value.replace(/<[^>]+>/g,''))||'',
+            sourceName: 'Wikimedia Commons',
+            sourceUrl: p.fullurl || (ii.descriptionurl || full)
+          };
         }
       }
       throw new Error('Commons: failed');
@@ -353,7 +363,13 @@
         else if (direction === 'right') payload = await fetchCommonsRandom();
       } catch(err){
         console.error(err);
-        payload = { thumbUrl:`https://picsum.photos/seed/${Date.now()%100000}/900/1200`, fullUrl:`https://picsum.photos/seed/${Date.now()%100000}/1800/2400`, title: err.message||'Error', author:'', so[...]
+        const seed = Date.now()%100000;
+        payload = {
+          thumbUrl:`https://picsum.photos/seed/${seed}/900/1200`,
+          fullUrl:`https://picsum.photos/seed/${seed}/1800/2400`,
+          title: err.message||'Error', author:'',
+          sourceName:'Fallback', sourceUrl:'https://picsum.photos/'
+        };
       }
 
       const slide = document.createElement('div');
@@ -418,10 +434,7 @@
         try { await hi.decode(); } catch(_) {}
         img.src = payload.fullUrl;
       }
-      img.animate([
-        { filter: 'blur(6px)' },
-        { filter: 'blur(0px)' }
-      ], { duration: 220, easing: 'ease-out', fill: 'forwards' });
+      img.animate([{ filter: 'blur(6px)' }, { filter: 'blur(0px)' }], { duration: 220, easing: 'ease-out', fill: 'forwards' });
 
       setCredit(payload);
       if (!window.__bgHidden){ const bg = document.getElementById('bg'); if (bg) bg.style.display='none'; window.__bgHidden=true; }
@@ -435,38 +448,34 @@
     };
 
     let busy = false; // 節流，避免連按造成重疊
-
-    // 將 trigger 掛到 window，讓鋼琴模組能包裝它以出聲（也能被觸控使用）
     let __hasInteracted = false;
-window.trigger = async function(dir, fromUser=false){
-  if (fromUser && !__hasInteracted) {
-    __hasInteracted = true;
-    if (hintPill && hintPill.parentNode) { hintPill.parentNode.removeChild(hintPill); }
-    if (controlsRow && controlsRow.parentNode) { controlsRow.parentNode.removeChild(controlsRow); }
-  }
-  if (busy) return; busy = true;
-  await showFromDirection(dir);
-  busy = false;
-};
+
+    // 統一的 trigger：第一次「使用者互動」時，移除提示列
+    window.trigger = async function(dir, fromUser=false){
+      if (fromUser && !__hasInteracted) {
+        __hasInteracted = true;
+        if (hintPill && hintPill.parentNode) hintPill.parentNode.removeChild(hintPill);
+        if (controlsRow && controlsRow.parentNode) controlsRow.parentNode.removeChild(controlsRow);
+      }
+      if (busy) return; busy = true;
+      await showFromDirection(dir);
+      busy = false;
+    };
 
     window.addEventListener('keydown', (e) => {
-  const dir = keyMap[e.key];
-  if (dir){
-    e.preventDefault();
-    window.trigger(dir, true);
-  }
-});
+      const dir = keyMap[e.key];
+      if (dir){
+        e.preventDefault();
+        window.trigger(dir, true);
+      }
+    });
 
-    // NOTE: removed the premature "mark as hooked" flags here so the piano module can attach audio hooks.
-    // (previous version set window.__pianoKeyListenerAttached = true and element.__pianoHooked = true
-    // immediately which prevented the piano script from adding its listeners.)
-
-    document.getElementById('btnUp').onclick = () => window.trigger('up', true);
-    document.getElementById('btnDown').onclick = () => window.trigger('down', true);
-    document.getElementById('btnLeft').onclick = () => window.trigger('left', true);
+    document.getElementById('btnUp').onclick    = () => window.trigger('up', true);
+    document.getElementById('btnDown').onclick  = () => window.trigger('down', true);
+    document.getElementById('btnLeft').onclick  = () => window.trigger('left', true);
     document.getElementById('btnRight').onclick = () => window.trigger('right', true);
 
-    // 觸控滑動（直覺映射：上滑→down、右滑→left），並由 window.trigger 統一出聲
+    // 觸控滑動（上滑→down、右滑→left），由 window.trigger 統一出聲
     (function(){
       if (window.__swipeInstalled) return; window.__swipeInstalled = true;
       let sx=0, sy=0; const THRESH=48;
@@ -479,8 +488,8 @@ window.trigger = async function(dir, fromUser=false){
       }, { passive:true });
     })();
 
-    // 起始先載一張（任選來源）
-window.trigger('up', false);
+    // 起始先載一張（任選來源），不算使用者互動
+    window.trigger('up', false);
   </script>
 
   <!-- Offline piano samples (HTMLAudio, no external CDN) -->
@@ -489,11 +498,14 @@ window.trigger('up', false);
       if (window.__pianoInstalled) return; // 避免重複安裝
       window.__pianoInstalled = true;
 
+      // 以當前頁面 URL 為基準組出絕對路徑，避免在 /Doom.mood/ 子路徑或子檔案夾打開時變成 404
+      const R = (p) => new URL(p, document.baseURI || location.href).toString();
+
       const PIANO_LOCAL = {
-        up:   'assets/piano/C5.mp3',  // 8 (高音 Do)
-        down: 'assets/piano/E5.mp3',  // 3 (高音 Mi)
-        left: 'assets/piano/B4.mp3',  // 7 (高音 Ti)
-        right:'assets/piano/D5.mp3'   // 2 (高音 Re)
+        up:    R('assets/piano/C5.mp3'),  // 8 (高音 Do)
+        down:  R('assets/piano/E5.mp3'),  // 3 (高音 Mi)
+        left:  R('assets/piano/B4.mp3'),  // 7 (高音 Ti)
+        right: R('assets/piano/D5.mp3')   // 2 (高音 Re)
       };
 
       const sounds = {};
@@ -503,16 +515,17 @@ window.trigger('up', false);
         a.preload = 'auto';
         a.crossOrigin = 'anonymous';
         a.volume = 0.9;
+        a.onerror = () => console.error('[audio 404]', a.src); // 若路徑錯會顯示實際 URL
         sounds[k] = a;
       }
 
-      // 解鎖：第一次手勢播放極短靜音
+      // 第一次互動時解鎖（行動裝置音訊政策）
       let audioUnlocked = false;
       async function unlockAudio(){
         if (audioUnlocked) return;
         try {
           const s = new Audio(PIANO_LOCAL.up);
-          s.volume = 0.0001; // nearly silent
+          s.volume = 0.0001; // 幾乎靜音
           const p = s.play();
           if (p && typeof p.then === 'function') await p;
           s.pause();
@@ -530,23 +543,23 @@ window.trigger('up', false);
         try { a.currentTime = 0; a.play(); } catch(e){ console.error('audio play failed', e); }
       }
 
-      // 正確包裝 window.trigger：保留原本行為並加上解鎖/播放
+      // 包裝 window.trigger：保留原本行為並加上解鎖/播放
       if (typeof window.trigger === 'function' && !window.__pianoTriggerWrapped){
         const prev = window.trigger;
         window.trigger = async function(dir, fromUser=false){
-          // 由使用者觸發時先嘗試解鎖 audio（若尚未解鎖）
-          if (fromUser) await unlockAudio();
-          // 播放音效（盡量先播放以提升即時感）
-          playPiano(dir);
-          // 呼叫原本的 trigger（顯示圖片）
-          return prev(dir, fromUser);
+          if (fromUser) await unlockAudio(); // 由使用者觸發才嘗試解鎖
+          playPiano(dir);                   // 先播音效提升即時感
+          return prev(dir, fromUser);       // 再切換圖片
         };
         window.__pianoTriggerWrapped = true;
       }
 
-      // 若未被預先綁定，保留鍵盤與 D-pad 的備援綁定（目前主程式會避免雙重綁定）
+      // 保底鍵盤與 D-pad 即時出聲（不影響主流程）
       if (!window.__pianoKeyListenerAttached){
-        window.addEventListener('keydown', (e)=>{ const d = {ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right'}[e.key]; if (d) playPiano(d); }, { passive:true });
+        window.addEventListener('keydown', (e)=>{
+          const d = {ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right'}[e.key];
+          if (d) playPiano(d);
+        }, { passive:true });
         window.__pianoKeyListenerAttached = true;
       }
       [['Up','up'],['Down','down'],['Left','left'],['Right','right']].forEach(([k,d])=>{
