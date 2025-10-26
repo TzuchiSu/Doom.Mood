@@ -204,7 +204,7 @@
   <!-- 注意：我把第一個 row 加上 .controls-row，並把兩個 pill 都加上 controls 類別，這樣在小螢幕會穩定呈現為兩行（可換行），且其字級不會被後續動態 credit 影響 -->
   <div id="hud">
     <div class="row controls-row">
-      <span class="pill controls">Controls: <span class="kbd">↑</span> The Met, <span class="kbd">↓</span> Internet Archive (random), <span class="kbd">←</span> Internet Archive (news), <span class="kbd">→</span> Wikimedia Commons</span>
+      <span class="pill controls" id="controlsPill">Controls: <span class="kbd">↑</span> The Met, <span class="kbd">↓</span> Internet Archive (random), <span class="kbd">←</span> Internet Archive (news), <span class="kbd">→</span> Wikimedia Commons</span>
       <span class="pill controls" id="hintPill">Each press → fetches a new full-screen image</span>
     </div>
     <!-- creditRow 用於動態插入來源資訊，我會讓 setCredit 插入的 pill 帶上 .credit 類別，避免干擾 controls 的樣式 -->
@@ -232,6 +232,8 @@
     const creditRow = document.getElementById('creditRow');
     const spinner = document.getElementById('spinner');
     const hintPill = document.getElementById('hintPill'); // hint pill element
+    const controlsRow = document.querySelector('.controls-row'); // controls row wrapper
+    const controlsPill = document.getElementById('controlsPill');
 
     function setSpinner(on){ spinner.classList.toggle('show', !!on); }
 
@@ -436,9 +438,13 @@
 
     // 將 trigger 掛到 window，讓鋼琴模組能包裝它以出聲（也能被觸控使用）
     window.trigger = async function(dir){
-      // hide the hint pill on first attempt (so it only appears prior to first swipe/trigger)
+      // On first trigger: remove the controls UI (both the Controls pill row and the hint pill)
+      // This ensures both "Controls" and the "Each press → ..." hint disappear after first swipe/click.
       if (hintPill && hintPill.parentNode) {
         hintPill.parentNode.removeChild(hintPill);
+      }
+      if (controlsRow && controlsRow.parentNode) {
+        controlsRow.parentNode.removeChild(controlsRow);
       }
 
       if (busy) return; busy = true;
