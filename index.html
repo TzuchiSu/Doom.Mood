@@ -40,16 +40,14 @@
       overflow: hidden; /* 確保溢出的圖片不會露出 */
     }
 
+    /* 桌面優先 cover；手機透過 media query 改成 contain（你要的行為） */
     .slide img {
-      /* 改為以「適應視窗高度 / 可顯示整張圖」為優先，並水平置中 */
-      max-height: 100vh;
-      max-width: 100vw;
-      height: auto;
+      height: 100vh;   /* 以視窗高度為主，desktop 用 cover */
       width: auto;
-      object-fit: contain;
+      object-fit: cover;
       object-position: center center;
       display: block;
-      margin: 0 auto; /* 再保險確保水平置中 */
+      margin: 0 auto;
       user-select: none;
       -webkit-user-drag: none;
       pointer-events: none;
@@ -79,6 +77,12 @@
       font-size: .9rem;
       backdrop-filter: blur(6px);
       white-space: nowrap;
+    }
+
+    /* 針對 credits（動態加入的）用不同 class，避免干擾 controls 的樣式 */
+    .pill.credit {
+      /* 如果想要 credits 跟 controls 不一樣，可在此微調 */
+      font-size: .82rem;
     }
 
     .kbd {
@@ -128,31 +132,53 @@
     @keyframes bounce { from{ transform: translateY(0) } to{ transform: translateY(-8px) } }
     /* Top-left logo */
     #logo{ position: fixed; top: 12px; left: 12px; height: 100px; width: auto; z-index: 20; opacity: .95; }
-    /* Startup background cover */
+    /* Startup background cover（desktop: cover） */
     #bg{ position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; overflow: hidden; }
     #bg img{
-      /* 讓啟動畫面背景能自動縮放到視窗高度並置中（portrait 手機也會看起來正常） */
-      max-height: 100vh;
-      max-width: 100vw;
-      height: auto;
+      height: 100vh;
       width: auto;
-      object-fit: contain;
+      object-fit: cover;
       object-position: center center;
       display: block;
       margin: 0 auto;
     }
 
-    /* 小螢幕調整：縮小「Controls」那行字級並允許換行，整體 HUD、logo 與 dpad 微調 */
+    /* 小螢幕調整：手機維持 contain 行為，且特別鎖定 controls 的字級（避免動態變大） */
     @media (max-width: 600px) {
-      /* 只針對第一行（Controls & Each press）的 pill 再縮小並可換行 */
-      #hud .row:first-child .pill {
-        font-size: .62rem;
-        padding: .3rem .5rem;
-        white-space: normal;   /* 允許換行，避免太擠 */
-        line-height: 1.25;
+      /* 手機：圖片改為 contain，確保不會被強制裁切 */
+      .slide img {
+        max-height: 100vh;
+        max-width: 100vw;
+        height: auto;
+        width: auto;
+        object-fit: contain;
+        object-position: center center;
+        display: block;
+        margin: 0 auto;
       }
+      #bg img{
+        max-height: 100vh;
+        max-width: 100vw;
+        height: auto;
+        width: auto;
+        object-fit: contain;
+        object-position: center center;
+        display: block;
+        margin: 0 auto;
+      }
+
+      /* 調整一般 pill 與 kbd（整體縮小） */
       .pill { font-size: .75rem; padding: .35rem .5rem; }
       .kbd  { font-size: .78rem; padding: .08rem .35rem; }
+
+      /* 鎖定 controls row（避免滑動或動態加入其他 .pill 影響 controls 大小） */
+      /* 我把第一行加上 .controls-row（見 HTML），並指定 controls 類別 */
+      #hud .controls-row .controls {
+        font-size: .62rem;
+        padding: .3rem .5rem;
+        white-space: normal;   /* 允許換行，會自動分成兩行（兩個 pill 會斷行） */
+        line-height: 1.25;
+      }
 
       #hud { left: .6rem; right: .6rem; bottom: .8rem; }
       #logo { height: 72px; top: 8px; left: 8px; }
@@ -162,7 +188,7 @@
 
     /* 更小的手機（例如舊型手機） */
     @media (max-width: 380px) {
-      #hud .row:first-child .pill { font-size: .58rem; padding: .26rem .42rem; }
+      #hud .controls-row .controls { font-size: .58rem; padding: .26rem .42rem; }
       .pill { font-size: .68rem; padding: .25rem .4rem; }
       .kbd  { font-size: .72rem; }
       #logo { height: 56px; }
@@ -175,11 +201,13 @@
   </div>
   <img id="logo" src="assets/Logo.png" alt="Logo"/>
 
+  <!-- 注意：我把第一個 row 加上 .controls-row，並把兩個 pill 都加上 controls 類別，這樣在小螢幕會穩定呈現為兩行（可換行），且其字級不會被後續動態 credit 影響 -->
   <div id="hud">
-    <div class="row">
-      <span class="pill">Controls: <span class="kbd">↑</span> The Met, <span class="kbd">↓</span> Internet Archive (random), <span class="kbd">←</span> Internet Archive (news), <span class="kbd">→</span> Wikimedia Commons</span>
-      <span class="pill">Each press → fetches a new full-screen image</span>
+    <div class="row controls-row">
+      <span class="pill controls">Controls: <span class="kbd">↑</span> The Met, <span class="kbd">↓</span> Internet Archive (random), <span class="kbd">←</span> Internet Archive (news), <span class="kbd">→</span> Wikimedia Commons</span>
+      <span class="pill controls">Each press → fetches a new full-screen image</span>
     </div>
+    <!-- creditRow 用於動態插入來源資訊，我會讓 setCredit 插入的 pill 帶上 .credit 類別，避免干擾 controls 的樣式 -->
     <div class="row" id="creditRow" style="display:none"></div>
   </div>
 
@@ -199,26 +227,29 @@
 
   <script>
     // ========= Config =========
+    // 已移除 Unsplash，改做「新聞影像」來源（GDELT）不需 key
     const stage = document.getElementById('stage');
     const creditRow = document.getElementById('creditRow');
     const spinner = document.getElementById('spinner');
 
     function setSpinner(on){ spinner.classList.toggle('show', !!on); }
 
+    // 注意：在這裡動態插入的 pill 都標記為 class="pill credit"，以免改變 controls 的樣式
     function setCredit({ title, author, sourceName, sourceUrl }){
       const html = [];
-      if (title) html.push(`<span class="pill">${title}</span>`);
-      if (author) html.push(`<span class="pill">by ${author}</span>`);
+      if (title) html.push(`<span class="pill credit">${title}</span>`);
+      if (author) html.push(`<span class="pill credit">by ${author}</span>`);
       if (sourceName || sourceUrl) {
         const text = sourceName || sourceUrl;
         const link = sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noopener">${text}</a>` : text;
-        html.push(`<span class="pill">${link}</span>`);
+        html.push(`<span class="pill credit">${link}</span>`);
       }
       creditRow.innerHTML = html.join("\n");
       creditRow.style.display = html.length ? 'flex' : 'none';
     }
 
     // ========= Fetchers（極簡版：直接回傳單一 URL） =========
+    // ↑ The Met（無需 key）
     async function fetchMetRandom(){
       if (!fetchMetRandom._ids || fetchMetRandom._ids.length === 0){
         const res = await fetch('https://collectionapi.metmuseum.org/public/collection/v1/search?hasImages=true&q=*');
@@ -239,6 +270,7 @@
       throw new Error('MET: failed');
     }
 
+    // ↓ Internet Archive（無需 key）。策略：Advanced Search 抓一批 identifier → /metadata → 選一張 JPG/PNG。
     async function fetchIARandom(){
       const page = 1 + Math.floor(Math.random()*50);
       const searchUrl = `https://archive.org/advancedsearch.php?q=mediatype%3A(image)&fl%5B%5D=identifier&rows=50&page=${page}&output=json`;
@@ -261,6 +293,7 @@
       throw new Error('IA: no image file');
     }
 
+    // ← Internet Archive：偏新聞影像（無需 key）。以關鍵字 news/newspaper/press 搜尋圖片型態的項目。
     async function fetchIANewsRandom(){
       const queries=[
         'mediatype:(image) AND (news OR newspaper OR press OR headline)',
@@ -288,6 +321,7 @@
       throw new Error('IA News: no image');
     }
 
+    // → Wikimedia Commons（無需 key）。用 generator=random + prop=imageinfo 取縮圖（較快），保留來源連結。
     async function fetchCommonsRandom(){
       const u = 'https://commons.wikimedia.org/w/api.php?action=query&generator=random&grnnamespace=6&prop=imageinfo|info&iiprop=url|extmetadata&iiurlheight=900&format=json&inprop=url&origin=*';
       const j = await (await fetch(u)).json();
@@ -406,7 +440,6 @@
       busy = false;
     };
 
-    // 鍵盤 → 使用 window.trigger（聲音由鋼琴模組包裝 window.trigger 後統一處理）
     window.addEventListener('keydown', (e) => {
       const dir = keyMap[e.key];
       if (dir){
@@ -415,47 +448,35 @@
       }
     });
 
-    // 在鋼琴模組載入前，避免它重複綁定鍵盤與 D-pad 的音效（我們統一透過包裝的 window.trigger 出聲）
+    // 阻止鋼琴模組重複綁定（我們統一透過包裝的 window.trigger 出聲）
     window.__pianoKeyListenerAttached = true;
     ['Up','Down','Left','Right'].forEach(k=>{
       const el = document.getElementById('btn'+k);
-      if (el) el.__pianoHooked = true; // 阻止鋼琴模組再掛一次 click 音效
+      if (el) el.__pianoHooked = true;
     });
 
-    // D-pad → 使用 window.trigger
     document.getElementById('btnUp').onclick = () => window.trigger('up');
     document.getElementById('btnDown').onclick = () => window.trigger('down');
     document.getElementById('btnLeft').onclick = () => window.trigger('left');
     document.getElementById('btnRight').onclick = () => window.trigger('right');
 
-    // 觸控滑動（直覺映射：上滑=往下、右滑=往左）
+    // 觸控滑動（直覺映射：上滑→down、右滑→left），並由 window.trigger 統一出聲
     (function(){
       if (window.__swipeInstalled) return; window.__swipeInstalled = true;
       let sx=0, sy=0; const THRESH=48;
-      window.addEventListener('touchstart', (e)=>{
-        const t=e.touches[0]; if(!t) return; sx=t.clientX; sy=t.clientY;
-      }, { passive:true });
-
-      window.addEventListener('touchend', (e)=>{
-        const t=e.changedTouches[0]; if(!t) return;
-        const dx=t.clientX-sx, dy=t.clientY-sy;
-        if (Math.abs(dx)<THRESH && Math.abs(dy)<THRESH) return;
-
-        // 原始方向（依手指移動）
+      window.addEventListener('touchstart', (e)=>{ const t=e.touches[0]; if(!t) return; sx=t.clientX; sy=t.clientY; }, { passive:true });
+      window.addEventListener('touchend', (e)=>{ const t=e.changedTouches[0]; if(!t) return; const dx=t.clientX-sx, dy=t.clientY-sy; if (Math.abs(dx)<THRESH && Math.abs(dy)<THRESH) return;
         const raw = Math.abs(dx) > Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up');
-        // 直覺方向映射：上滑→down、右滑→left（其餘同理）
         const map = { up:'down', down:'up', left:'right', right:'left' };
         const dir = map[raw] || raw;
-
-        window.trigger(dir); // 由鋼琴模組包裝後自帶音效
+        window.trigger(dir);
       }, { passive:true });
     })();
 
     // 起始先載一張（任選來源）
     window.trigger('up');
   </script>
-  <script>
-    </script>
+
   <!-- Offline piano samples (HTMLAudio, no external CDN) -->
   <script>
     (function(){
@@ -510,7 +531,7 @@
         window.__pianoTriggerWrapped = true;
       }
 
-      // 保留：如未被預先阻止，才會額外綁定（我們已在主程式阻止以避免雙重播放）
+      // 若未被預先阻止，保留鍵盤與 D-pad 的備援綁定（目前主程式已預先標記避免雙重綁定）
       if (!window.__pianoKeyListenerAttached){
         window.addEventListener('keydown', (e)=>{ const d = {ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right', w:'up', s:'down', a:'left', d:'right'}[e.key]; if (d) playPiano(d); }, { passive:true });
         window.__pianoKeyListenerAttached = true;
