@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Doom.Mood</title>
+  <title>Doom Scrolling – Arrow-Key Random Image</title>
   <style>
     :root {
       --bg: #0b0d10;
@@ -121,7 +121,7 @@
     .dot:nth-child(3){ animation-delay: .3s; }
     @keyframes bounce { from{ transform: translateY(0) } to{ transform: translateY(-8px) } }
     /* Top-left logo */
-    #logo{ position: fixed; top: 12px; left: 12px; height: 200px; width: auto; z-index: 20; opacity: .95; }
+    #logo{ position: fixed; top: 12px; left: 12px; height: 300px; width: auto; z-index: 20; opacity: .95; }
     /* Startup background cover */
     #bg{ position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; }
     #bg img{ height: 100vh; width: auto; object-fit: cover; object-position: center; }
@@ -131,7 +131,7 @@
   <div id="stage" aria-live="polite">
     <div id="bg"><img src="assets/BG.png" alt="Background cover"></div>
   </div>
-  <img id="logo" src="assets/logo.png" alt="Logo"/>
+  <img id="logo" src="assets/Logo.png" alt="Logo"/>
 
   <div id="hud">
     <div class="row">
@@ -388,13 +388,6 @@
       window.addEventListener('touchstart', (e)=>{ const t=e.touches[0]; if(!t) return; sx=t.clientX; sy=t.clientY; }, { passive:true });
       window.addEventListener('touchend', (e)=>{ const t=e.changedTouches[0]; if(!t) return; const dx=t.clientX-sx, dy=t.clientY-sy; if (Math.abs(dx)<THRESH && Math.abs(dy)<THRESH) return; const dir = Math.abs(dx)>Math.abs(dy) ? (dx>0?'right':'left') : (dy>0?'down':'up'); try{ trigger(dir); }catch(err){ console.error('swipe trigger failed', err);} }, { passive:true });
     })();
-      const dy = (e.changedTouches[0].clientY - touchStart.clientY);
-      const ax = Math.abs(dx), ay = Math.abs(dy);
-      if (Math.max(ax, ay) < 30) return; // ignore short
-      if (ax > ay) trigger(dx < 0 ? 'left' : 'right');
-      else trigger(dy < 0 ? 'up' : 'down');
-      touchStart = null;
-    });
 
     // 起始先載一張（任選來源）
     showFromDirection('up');
@@ -429,10 +422,15 @@
       async function unlockAudio(){
         if (audioUnlocked) return;
         try {
-          const s = new Audio('data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA');
-          await s.play();
+          const s = new Audio('assets/piano/C5.mp3');
+          s.volume = 0.0001; // nearly silent
+          const p = s.play();
+          if (p && typeof p.then === 'function') await p;
+          s.pause();
           audioUnlocked = true;
-        } catch(e) { console.warn('unlock failed', e); }
+        } catch(e) {
+          console.warn('unlock failed', e);
+        }
       }
       window.addEventListener('pointerdown', unlockAudio, { once:true });
       window.addEventListener('keydown', unlockAudio, { once:true });
