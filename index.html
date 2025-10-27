@@ -487,9 +487,9 @@
         const t = e.changedTouches[0];
         if (!t) return;
         const dx = t.clientX - sx;
-        const dy = t.clientY - sy;
-        if (Math.abs(dy) < THRESH || Math.abs(dy) < Math.abs(dx)) return;
-        const dir = dy > 0 ? 'down' : 'up';
+  const dy = t.clientY - sy;
+  if (Math.abs(dy) < THRESH || Math.abs(dy) < Math.abs(dx)) return;
+  const dir = dy > 0 ? 'up' : 'down';
         window.trigger(dir, true);
       }, { passive:true });
     })();
