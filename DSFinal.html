@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Doom.mood</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --fg: #f1f5f9;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      overflow: hidden; /* 因為是滿版視圖 */
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+
+    /* 滿版容器 */
+    #stage {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      overflow: hidden;
+      isolation: isolate;
+      display: grid; /* center when empty */
+      place-items: center;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      will-change: transform, opacity;
+      overflow: hidden; /* 確保溢出的圖片不會露出 */
+    }
+
+    /* 桌面優先 cover；手機透過 media query 改成 contain（你要的行為） */
+    .slide img {
+      height: 100vh;   /* 以視窗高度為主，desktop 用 cover */
+      width: auto;
+      object-fit: cover;
+      object-position: center center;
+      display: block;
+      margin: 0 auto;
+      user-select: none;
+      -webkit-user-drag: none;
+      pointer-events: none;
+      filter: saturate(0.95) contrast(1.02);
+    }
+
+    /* 浮動資訊列 */
+    #hud {
+      position: fixed;
+      left: 1rem;
+      bottom: 1rem;
+      right: 1rem;
+      display: grid;
+      gap: .4rem;
+      pointer-events: none;
+      z-index: 10;
+    }
+    .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+
+    .pill {
+      pointer-events: auto;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      color: var(--fg);
+      border-radius: 999px;
+      padding: .45rem .7rem;
+      font-size: .9rem;
+      backdrop-filter: blur(6px);
+      white-space: nowrap;
+    }
+
+    /* 針對 credits（動態加入的）用不同 class，避免干擾 controls 的樣式 */
+    .pill.credit { font-size: .82rem; }
+
+    .kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: rgba(30, 41, 59, 0.85);
+      color: var(--fg);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      padding: .1rem .45rem;
+      border-radius: .4rem;
+      box-shadow: inset 0 -1px 0 rgba(255,255,255,0.05);
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* 螢幕上的方向按鈕（可觸控） */
+    #dpad {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 12;
+      pointer-events: auto;
+      opacity: .85;
+    }
+    #dpad button{
+      width: 48px;
+      height: 48px;
+      background: rgba(15,23,42,.55);
+      border: 1px solid rgba(148,163,184,.35);
+      color: var(--fg);
+      border-radius: .6rem;
+      font-size: 14px;
+      backdrop-filter: blur(6px);
+      cursor: pointer;
+    }
+    #dpad button:active{ transform: scale(.98); }
+
+    /* 載入中指示 */
+    #spinner{
+      position: fixed; inset: 0; display: grid; place-items: center; z-index: 11; pointer-events: none;
+      transition: opacity .25s ease; opacity: 0;
+    }
+    #spinner.show{ opacity: 1; }
+    .dot{
+      width: 10px; height: 10px; margin: 0 5px; border-radius: 50%; background: var(--fg);
+      animation: bounce 1s infinite ease-in-out alternate;
+    }
+    .dot:nth-child(2){ animation-delay: .15s; }
+    .dot:nth-child(3){ animation-delay: .3s; }
+    @keyframes bounce { from{ transform: translateY(0) } to{ transform: translateY(-8px) } }
+
+    /* Top-left logo */
+    #logo{ position: fixed; top: 12px; left: 12px; height: 150px; width: auto; z-index: 20; opacity: .95; }
+
+    /* Startup background cover（desktop: cover） */
+    #bg{ position: absolute; inset: 0; display: grid; place-items: center; z-index: 0; overflow: hidden; }
+    #bg img{
+      height: 100vh;
+      width: auto;
+      object-fit: cover;
+      object-position: center center;
+      display: block;
+      margin: 0 auto;
+    }
+
+    /* 小螢幕調整：手機維持 contain 行為，且特別鎖定 controls 的字級（避免動態變大） */
+    @media (max-width: 600px) {
+      .slide img, #bg img{
+        max-height: 100vh;
+        max-width: 100vw;
+        height: auto;
+        width: auto;
+        object-fit: contain;
+        object-position: center center;
+        display: block;
+        margin: 0 auto;
+      }
+      .pill { font-size: .75rem; padding: .35rem .5rem; }
+      .kbd  { font-size: .78rem; padding: .08rem .35rem; }
+
+      #hud .controls-row .controls {
+        font-size: .62rem;
+        padding: .3rem .5rem;
+        white-space: normal;
+        line-height: 1.25;
+      }
+
+      #hud { left: .6rem; right: .6rem; bottom: .8rem; }
+      #logo { height: 72px; top: 8px; left: 8px; }
+  #dpad { top: 8px; right: 8px; gap: 6px; }
+  #dpad button { width: 40px; height: 40px; font-size: 12px; border-radius: .45rem; }
+    }
+
+    @media (max-width: 380px) {
+      #hud .controls-row .controls { font-size: .58rem; padding: .26rem .42rem; }
+      .pill { font-size: .68rem; padding: .25rem .4rem; }
+      .kbd  { font-size: .72rem; }
+      #logo { height: 56px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="stage" aria-live="polite">
+    <div id="bg"><img src="assets/BG.png" alt="Background cover"></div>
+  </div>
+  <img id="logo" src="assets/Logo.png" alt="Logo"/>
+
+  <div id="hud">
+    <div class="row controls-row">
+      <span class="pill controls" id="controlsPill">
+        Controls:
+        <span class="kbd">↑</span> Wikimedia Commons,
+        <span class="kbd">↓</span> Internet Archive
+      </span>
+      <span class="pill controls" id="hintPill">Press ↑ or ↓ to fetch a new image</span>
+    </div>
+    <!-- creditRow 供動態插入來源資訊 -->
+    <div class="row" id="creditRow" style="display:none"></div>
+  </div>
+
+  <div id="dpad" aria-label="On-screen arrow pad">
+    <button id="btnUp">↑</button>
+    <button id="btnDown">↓</button>
+  </div>
+
+  <div id="spinner"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+
+  <script>
+    // ========= Config / Elements =========
+    const stage = document.getElementById('stage');
+    const creditRow = document.getElementById('creditRow');
+    const spinner = document.getElementById('spinner');
+    const hintPill = document.getElementById('hintPill');
+    const controlsRow = document.querySelector('.controls-row');
+
+    function setSpinner(on){ spinner.classList.toggle('show', !!on); }
+
+    // 動態插入來源資訊（每個 pill 帶 .credit，不影響 controls 樣式）
+    function setCredit({ title, author, sourceName, sourceUrl }){
+      const html = [];
+      if (title) html.push(`<span class="pill credit">${title}</span>`);
+      if (author) html.push(`<span class="pill credit">by ${author}</span>`);
+      if (sourceName || sourceUrl) {
+        const text = sourceName || sourceUrl;
+        const link = sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noopener">${text}</a>` : text;
+        html.push(`<span class="pill credit">${link}</span>`);
+      }
+      creditRow.innerHTML = html.join("\n");
+      creditRow.style.display = html.length ? 'flex' : 'none';
+    }
+
+    // ========= Fetchers（單一 URL 輸出） =========
+    async function fetchMetRandom(){
+      if (!fetchMetRandom._ids || fetchMetRandom._ids.length === 0){
+        const res = await fetch('https://collectionapi.metmuseum.org/public/collection/v1/search?hasImages=true&q=*');
+        const data = await res.json();
+        fetchMetRandom._ids = data.objectIDs || [];
+      }
+      if (!fetchMetRandom._ids.length) throw new Error('MET: no objectIDs');
+      for (let i=0;i<8;i++){
+        const id = fetchMetRandom._ids[Math.floor(Math.random()*fetchMetRandom._ids.length)];
+        const r = await fetch(`https://collectionapi.metmuseum.org/public/collection/v1/objects/${id}`);
+        const obj = await r.json();
+        const full = obj.primaryImage || obj.additionalImages?.[0] || obj.primaryImageSmall;
+        const thumb = obj.primaryImageSmall || full;
+        if (full){
+          return {
+            thumbUrl: thumb,
+            fullUrl: full,
+            title: obj.title||'The Met',
+            author: obj.artistDisplayName||'',
+            sourceName: 'The Met',
+            sourceUrl: obj.objectURL||'https://www.metmuseum.org/art/collection'
+          };
+        }
+      }
+      throw new Error('MET: failed');
+    }
+
+    async function fetchIARandom(){
+      const page = 1 + Math.floor(Math.random()*50);
+      const searchUrl = `https://archive.org/advancedsearch.php?q=mediatype%3A(image)&fl%5B%5D=identifier&rows=50&page=${page}&output=json`;
+      const res = await fetch(searchUrl);
+      const data = await res.json();
+      const docs = data?.response?.docs || [];
+      if (!docs.length) throw new Error('IA: no docs');
+      for (let t=0;t<12;t++){
+        const id = docs[Math.floor(Math.random()*docs.length)].identifier;
+        const meta = await (await fetch(`https://archive.org/metadata/${id}`)).json();
+        const files = meta?.files || [];
+        const big = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && !/thumb|small|icon/i.test(f.name));
+        const small = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && /thumb|small|icon|medium/i.test(f.name));
+        const fullF = big[0] || small[0];
+        const thumbF = small[0] || big[0];
+        if (fullF){
+          return {
+            thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`,
+            fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`,
+            title: meta?.metadata?.title || 'Internet Archive',
+            author: meta?.metadata?.creator || '',
+            sourceName: 'Internet Archive',
+            sourceUrl: `https://archive.org/details/${id}`
+          };
+        }
+      }
+      throw new Error('IA: no image file');
+    }
+
+    async function fetchIANewsRandom(){
+      const queries=[
+        'mediatype:(image) AND (news OR newspaper OR press OR headline)',
+        'mediatype:(image) AND (frontpage OR journal OR periodical)',
+        'mediatype:(image) AND (magazine AND news)'
+      ];
+      const q = encodeURIComponent(queries[Math.floor(Math.random()*queries.length)]);
+      const page = 1 + Math.floor(Math.random()*50);
+      const searchUrl = `https://archive.org/advancedsearch.php?q=${q}&fl%5B%5D=identifier&rows=50&page=${page}&output=json`;
+      const data = await (await fetch(searchUrl)).json();
+      const docs = data?.response?.docs || [];
+      if (!docs.length) throw new Error('IA News: no docs');
+      for (let t=0;t<14;t++){
+        const id = docs[Math.floor(Math.random()*docs.length)].identifier;
+        const meta = await (await fetch(`https://archive.org/metadata/${id}`)).json();
+        const files = meta?.files || [];
+        const big = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && !/thumb|small|icon/i.test(f.name));
+        const small = files.filter(f=>/\.(jpe?g|png)$/i.test(f.name) && /thumb|small|icon|medium/i.test(f.name));
+        const fullF = big[0] || small[0];
+        const thumbF = small[0] || big[0];
+        if (fullF){
+          return {
+            thumbUrl:`https://archive.org/download/${id}/${encodeURIComponent(thumbF.name)}`,
+            fullUrl:`https://archive.org/download/${id}/${encodeURIComponent(fullF.name)}`,
+            title: meta?.metadata?.title || 'Internet Archive (news)',
+            author: meta?.metadata?.creator || '',
+            sourceName: 'Internet Archive',
+            sourceUrl: `https://archive.org/details/${id}`
+          };
+        }
+      }
+      throw new Error('IA News: no image');
+    }
+
+    async function fetchCommonsRandom(){
+      const u = 'https://commons.wikimedia.org/w/api.php?action=query&generator=random&grnnamespace=6&prop=imageinfo|info&iiprop=url|extmetadata&iiurlheight=900&format=json&inprop=url&origin=*';
+      const j = await (await fetch(u)).json();
+      const pages = j?.query?.pages ? Object.values(j.query.pages) : [];
+      if (!pages.length) throw new Error('Commons: no pages');
+      for (const p of pages){
+        const ii = p.imageinfo && p.imageinfo[0];
+        const thumb = ii?.thumburl || ii?.url;
+        const full = ii?.url || thumb;
+        if (thumb){
+          const em = ii.extmetadata || {};
+          return {
+            thumbUrl: thumb,
+            fullUrl: full,
+            title:(em.ObjectName && em.ObjectName.value)||p.title||'Wikimedia Commons',
+            author:(em.Artist && em.Artist.value && em.Artist.value.replace(/<[^>]+>/g,''))||'',
+            sourceName: 'Wikimedia Commons',
+            sourceUrl: p.fullurl || (ii.descriptionurl || full)
+          };
+        }
+      }
+      throw new Error('Commons: failed');
+    }
+
+    // ========= View: slide-in 轉場（縮圖 → 大圖） =========
+    async function showFromDirection(direction){
+      setSpinner(true);
+      let payload;
+      try {
+        if (direction === 'up') payload = await fetchCommonsRandom();
+        else if (direction === 'down') payload = await fetchIARandom();
+        else throw new Error('Unsupported direction');
+      } catch(err){
+        console.error(err);
+        const seed = Date.now()%100000;
+        payload = {
+          thumbUrl:`https://picsum.photos/seed/${seed}/900/1200`,
+          fullUrl:`https://picsum.photos/seed/${seed}/1800/2400`,
+          title: err.message||'Error', author:'',
+          sourceName:'Fallback', sourceUrl:'https://picsum.photos/'
+        };
+      }
+
+      const slide = document.createElement('div');
+      slide.className = 'slide';
+
+      // 先放縮圖
+      const img = new Image();
+      img.decoding = 'async';
+      img.loading = 'eager';
+      img.referrerPolicy = 'no-referrer'; // 避免 IA 401
+      const chosen = payload.thumbUrl || payload.fullUrl || payload.url;
+      img.src = chosen;
+      // IA 401/403 備援：改用 /serve/ 端點；最後退回 Picsum
+      img.onerror = () => {
+        if ((payload.sourceName||'').startsWith('Internet Archive') && chosen) {
+          try {
+            const m = chosen.match(/download\/([^/]+)\/(.+)$/);
+            if (m) {
+              img.onerror = null;
+              img.src = `https://archive.org/serve/${m[1]}/${m[2]}`;
+              return;
+            }
+          } catch(_){}
+        }
+        img.src = `https://picsum.photos/seed/${Date.now()%100000}/1600/900`;
+      };
+      slide.appendChild(img);
+
+  const h = stage.clientHeight;
+  const startX = 0;
+  let startY = 0;
+  if (direction === 'up') startY = -h;
+  if (direction === 'down') startY = h;
+  slide.style.transform = `translate(${startX}px, ${startY}px)`;
+      slide.style.opacity = '0.8';
+
+      const prev = stage.querySelector('.slide:last-of-type');
+      stage.appendChild(slide);
+
+      try{ await img.decode(); }catch(_){ }
+
+      const ANIM_MS = 420;
+      slide.animate([
+        { transform: `translate(${startX}px, ${startY}px)`, opacity: .8 },
+        { transform: 'translate(0, 0)', opacity: 1 }
+      ], { duration: ANIM_MS, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'forwards' });
+
+      if (prev){
+        prev.animate([
+          { transform: 'translate(0,0)', opacity: 1 },
+          { transform: `translate(${-startX*0.25}px, ${-startY*0.25}px)`, opacity: 0 }
+        ], { duration: ANIM_MS, easing: 'cubic-bezier(.2,.7,.2,1)', fill: 'forwards' })
+        .addEventListener('finish', () => prev.remove());
+      }
+
+      // 預載大圖並替換
+      if (payload.fullUrl && payload.fullUrl !== payload.thumbUrl){
+        const hi = new Image();
+        hi.decoding = 'async';
+        hi.src = payload.fullUrl;
+        try { await hi.decode(); } catch(_) {}
+        img.src = payload.fullUrl;
+      }
+      img.animate([{ filter: 'blur(6px)' }, { filter: 'blur(0px)' }], { duration: 220, easing: 'ease-out', fill: 'forwards' });
+
+      setCredit(payload);
+      if (!window.__bgHidden){ const bg = document.getElementById('bg'); if (bg) bg.style.display='none'; window.__bgHidden=true; }
+      setSpinner(false);
+    }
+
+    // ========= Controls =========
+    const keyMap = {
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      w: 'up',
+      s: 'down'
+    };
+
+    let busy = false; // 節流，避免連按造成重疊
+    let __hasInteracted = false;
+
+    // 統一的 trigger：第一次「使用者互動」時，移除提示列
+    window.trigger = async function(dir, fromUser=false){
+      if (dir !== 'up' && dir !== 'down') return;
+      if (fromUser && !__hasInteracted) {
+        __hasInteracted = true;
+        if (hintPill && hintPill.parentNode) hintPill.parentNode.removeChild(hintPill);
+        if (controlsRow && controlsRow.parentNode) controlsRow.parentNode.removeChild(controlsRow);
+      }
+      if (busy) return; busy = true;
+      await showFromDirection(dir);
+      busy = false;
+    };
+
+    window.addEventListener('keydown', (e) => {
+      const dir = keyMap[e.key];
+      if (dir){
+        e.preventDefault();
+        window.trigger(dir, true);
+      }
+    });
+
+    document.getElementById('btnUp').onclick    = () => window.trigger('up', true);
+    document.getElementById('btnDown').onclick  = () => window.trigger('down', true);
+
+  // 觸控滑動（上下滑動觸發），由 window.trigger 統一出聲
+    (function(){
+      if (window.__swipeInstalled) return;
+      window.__swipeInstalled = true;
+      let sx = 0, sy = 0;
+      const THRESH = 48;
+      window.addEventListener('touchstart', (e)=>{
+        const t = e.touches[0];
+        if (!t) return;
+        sx = t.clientX;
+        sy = t.clientY;
+      }, { passive:true });
+      window.addEventListener('touchend', (e)=>{
+        const t = e.changedTouches[0];
+        if (!t) return;
+        const dx = t.clientX - sx;
+        const dy = t.clientY - sy;
+        if (Math.abs(dy) < THRESH || Math.abs(dy) < Math.abs(dx)) return;
+        const dir = dy > 0 ? 'down' : 'up';
+        window.trigger(dir, true);
+      }, { passive:true });
+    })();
+
+    // 起始先載一張（任選來源），不算使用者互動
+    window.trigger('up', false);
+  </script>
+
+  <!-- Offline piano samples (HTMLAudio, no external CDN) -->
+  <script>
+    (function(){
+      if (window.__pianoInstalled) return; // 避免重複安裝
+      window.__pianoInstalled = true;
+
+      // 以當前頁面 URL 為基準組出絕對路徑，避免在 /Doom.mood/ 子路徑或子檔案夾打開時變成 404
+      const R = (p) => new URL(p, document.baseURI || location.href).toString();
+
+      const PIANO_LOCAL = {
+        up:   R('assets/piano/G3.mp3'),
+        down: R('assets/piano/G3.mp3')
+      };
+
+      const sounds = {};
+      for (const k in PIANO_LOCAL){
+        const a = new Audio();
+        a.src = PIANO_LOCAL[k];
+        a.preload = 'auto';
+        a.crossOrigin = 'anonymous';
+        a.volume = 0.9;
+        a.onerror = () => console.error('[audio 404]', a.src); // 若路徑錯會顯示實際 URL
+        sounds[k] = a;
+      }
+
+      // 第一次互動時解鎖（行動裝置音訊政策）
+      let audioUnlocked = false;
+      async function unlockAudio(){
+        if (audioUnlocked) return;
+        try {
+          const s = new Audio(PIANO_LOCAL.up);
+          s.volume = 0.0001; // 幾乎靜音
+          const p = s.play();
+          if (p && typeof p.then === 'function') await p;
+          s.pause();
+          audioUnlocked = true;
+        } catch(e) {
+          console.warn('unlock failed', e);
+        }
+      }
+      window.addEventListener('pointerdown', unlockAudio, { once:true });
+      window.addEventListener('keydown', unlockAudio, { once:true });
+
+      function playPiano(dir){
+        const a = sounds[dir];
+        if (!a) return;
+        try { a.currentTime = 0; a.play(); } catch(e){ console.error('audio play failed', e); }
+      }
+
+      // 包裝 window.trigger：保留原本行為並加上解鎖/播放
+      if (typeof window.trigger === 'function' && !window.__pianoTriggerWrapped){
+        const prev = window.trigger;
+        window.trigger = async function(dir, fromUser=false){
+          if (fromUser) await unlockAudio(); // 由使用者觸發才嘗試解鎖
+          playPiano(dir);                   // 先播音效提升即時感
+          return prev(dir, fromUser);       // 再切換圖片
+        };
+        window.__pianoTriggerWrapped = true;
+      }
+
+      // 保底鍵盤與 D-pad 即時出聲（不影響主流程）
+      if (!window.__pianoKeyListenerAttached){
+        window.addEventListener('keydown', (e)=>{
+          const d = {ArrowUp:'up', ArrowDown:'down', w:'up', s:'down'}[e.key];
+          if (d) playPiano(d);
+        }, { passive:true });
+        window.__pianoKeyListenerAttached = true;
+      }
+      [['Up','up'],['Down','down']].forEach(([k,d])=>{
+        const el = document.getElementById('btn'+k);
+        if (el && !el.__pianoHooked){ el.addEventListener('click', ()=> playPiano(d)); el.__pianoHooked = true; }
+      });
+    })();
+  </script>
+</body>
+</html>
